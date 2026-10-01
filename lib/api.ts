@@ -60,8 +60,11 @@ interface ApiErrorBody {
   message?: string;
   error?: string;
 }
+const envUrl = process.env.NEXT_PUBLIC_API_URL;
 const API_BASE_URL =
-  "https://devlynix-backend-production.up.railway.app/api";
+  envUrl && !envUrl.includes("railway.app")
+    ? envUrl
+    : "https://devlynix-buildathon-2-0.onrender.com/api";
 
 export class ApiError extends Error {
   constructor(
