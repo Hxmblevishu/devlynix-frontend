@@ -7,7 +7,7 @@ import { TechnicalFrame } from "@/components/theme/TechnicalFrame";
 import { api, ApiError, type Match, type Message } from "@/lib/api";
 import { clearSession, getSession } from "@/lib/session";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 export default function MatchesPage() {
   const router = useRouter();
@@ -19,6 +19,7 @@ export default function MatchesPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const handleRequestError = useCallback(
     (requestError: unknown) => {
@@ -53,16 +54,47 @@ export default function MatchesPage() {
       .finally(() => setLoading(false));
   }, [handleRequestError, router, token]);
 
+  // Real-time message synchronization & polling
   useEffect(() => {
     if (!token || selectedMatchId === null) {
       return;
     }
 
+    // 1. Initial fetch
     api
       .getMessages(token, selectedMatchId)
       .then(setMessages)
       .catch((requestError) => handleRequestError(requestError));
+
+    // 2. Auto-poll every 2 seconds for incoming messages from teammate
+    const pollInterval = setInterval(() => {
+      api
+        .getMessages(token, selectedMatchId)
+        .then((latest) => {
+          setMessages((current) => {
+            if (latest.length !== current.length) {
+              return latest;
+            }
+            if (
+              latest.length > 0 &&
+              current.length > 0 &&
+              latest[latest.length - 1].id !== current[current.length - 1].id
+            ) {
+              return latest;
+            }
+            return current;
+          });
+        })
+        .catch(() => {});
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
   }, [handleRequestError, selectedMatchId, token]);
+
+  // Smooth auto-scroll when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   function logout() {
     clearSession();
@@ -141,14 +173,22 @@ export default function MatchesPage() {
             </aside>
 
             <section className="flex min-h-[560px] flex-col bg-olive/30">
-              <div className="border-b border-border p-5">
-                <p className="font-mono text-[9px] text-text-secondary">SECURE REST CHANNEL</p>
-                <h2 className="font-display text-3xl text-accent">
-                  {selectedMatch?.user.name ?? "SELECT_A_MATCH"}
-                </h2>
+              <div className="border-b border-border p-5 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+                    </span>
+                    <p className="font-mono text-[9px] text-text-secondary">LIVE CHANNEL :: REAL-TIME AUTO-SYNC</p>
+                  </div>
+                  <h2 className="font-display text-3xl text-accent">
+                    {selectedMatch?.user.name ?? "SELECT_A_MATCH"}
+                  </h2>
+                </div>
               </div>
 
-              <div className="flex-1 space-y-4 overflow-y-auto p-5">
+              <div className="flex-1 space-y-4 overflow-y-auto p-5 max-h-[460px]">
                 {messages.length === 0 ? (
                   <p className="font-mono text-[10px] text-text-secondary">
                     CHANNEL_EMPTY. TRANSMIT THE FIRST MESSAGE.
@@ -157,13 +197,14 @@ export default function MatchesPage() {
                   messages.map((chatMessage) => (
                     <article key={chatMessage.id} className="border-l-2 border-accent bg-olive-light/15 p-4">
                       <div className="flex justify-between gap-4 font-mono text-[9px] text-text-secondary">
-                        <span>{chatMessage.senderName}</span>
-                        <time>{new Date(chatMessage.sentAt).toLocaleString()}</time>
+                        <span className="font-bold">{chatMessage.senderName}</span>
+                        <time>{new Date(chatMessage.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
                       </div>
-                      <p className="mt-2 font-body text-sm text-text-primary">{chatMessage.content}</p>
+                      <p className="mt-2 font-body text-sm text-text-primary whitespace-pre-wrap">{chatMessage.content}</p>
                     </article>
                   ))
                 )}
+                <div ref={messagesEndRef} />
               </div>
 
               <form onSubmit={handleSend} className="grid gap-3 border-t border-border p-5 md:grid-cols-[1fr_auto] md:items-end">
@@ -176,7 +217,7 @@ export default function MatchesPage() {
                   disabled={selectedMatchId === null || sending}
                 />
                 <RetroButton type="submit" disabled={!message.trim() || selectedMatchId === null || sending}>
-                  {sending ? "SENDING..." : "TRANSMIT"}
+                  {sending ? "TRANSMITTING..." : "TRANSMIT"}
                 </RetroButton>
               </form>
             </section>
