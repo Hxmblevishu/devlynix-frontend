@@ -7,5 +7,8 @@ export { RetroInput } from "./RetroInput";
 export { CassetteCard } from "./CassetteCard";
 export type { CassetteCardProps } from "./CassetteCard";
 export { RetroModal } from "./RetroModal";
+export { EditProfileModal } from "./EditProfileModal";
+export { IncomingRequestsModal } from "./IncomingRequestsModal";
+export { TeammateIntelPanel } from "./TeammateIntelPanel";
 export { MeasurementDecor } from "./MeasurementDecor";
 export { CassettePlayerIllustration } from "./CassettePlayerIllustration";

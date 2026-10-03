@@ -60,7 +60,9 @@ interface ApiErrorBody {
   message?: string;
   error?: string;
 }
-const API_BASE_URL = "https://devlynix-buildathon-2-0.onrender.com/api";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://devlynix-buildathon-2-0.onrender.com/api";
 
 export class ApiError extends Error {
   constructor(
@@ -114,6 +116,20 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
+export function getGithubUsername(url?: string | null): string | null {
+  if (!url) return null;
+  const cleaned = url.trim().replace(/\/+$/, "");
+  const match = cleaned.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9_-]+)/i);
+  if (match) return match[1];
+  if (/^[a-zA-Z0-9_-]+$/.test(cleaned) && !cleaned.includes(".")) return cleaned;
+  return null;
+}
+
+export function getAvatarUrl(url?: string | null): string | null {
+  const username = getGithubUsername(url);
+  return username ? `https://github.com/${username}.png?size=120` : null;
+}
+
 export const api = {
   register(payload: RegisterPayload) {
     return request<AuthResponse>("/auth/register", {
@@ -161,14 +177,19 @@ export const api = {
     return request<Match[]>("/matches", {}, token);
   },
 
-  getMessages(token: string, matchId: number) {
-    return request<Message[]>(`/chat/${matchId}/messages`, {}, token);
+  getIncomingRequests(token: string) {
+    return request<Profile[]>("/matches/requests", {}, token).catch(() => []);
+  },
+
+  getMessages(token: string, matchId: number, afterId?: number) {
+    const query = afterId ? `?after=${afterId}` : "";
+    return request<Message[]>(`/chat/${matchId}/messages${query}`, {}, token);
   },
 
   sendMessage(token: string, matchId: number, content: string) {
     return request<Message>(
       `/chat/${matchId}/messages`,
-      { method: "POST", body: JSON.stringify({ matchId,content }) },
+      { method: "POST", body: JSON.stringify({ matchId, content }) },
       token,
     );
   },
