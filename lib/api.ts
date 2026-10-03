@@ -152,9 +152,18 @@ export const api = {
   updateProfile(token: string, payload: UpdateProfilePayload) {
     return request<Profile>(
       "/profile/me",
-      { method: "PUT", body: JSON.stringify(payload) },
+      { method: "PATCH", body: JSON.stringify(payload) },
       token,
-    );
+    ).catch(async (err) => {
+      if (err instanceof ApiError && (err.status === 405 || err.status === 400)) {
+        return request<Profile>(
+          "/profile/me",
+          { method: "PUT", body: JSON.stringify(payload) },
+          token,
+        );
+      }
+      throw err;
+    });
   },
 
   discover(token: string, skill?: string) {

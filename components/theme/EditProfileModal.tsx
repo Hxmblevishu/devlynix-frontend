@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RetroModal } from "./RetroModal";
 import { RetroInput } from "./RetroInput";
 import { RetroButton } from "./RetroButton";
@@ -31,14 +31,27 @@ export function EditProfileModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // Sync state if currentProfile changes
+  // Auto-prefill whenever modal opens or currentProfile changes
+  useEffect(() => {
+    if (isOpen && currentProfile) {
+      setName(currentProfile.name ?? "");
+      setGithubUrl(currentProfile.githubUrl ?? "");
+      setBio(currentProfile.bio ?? "");
+      setLookingFor(currentProfile.lookingFor ?? "");
+      setLocation(currentProfile.location ?? "");
+      setSkills(currentProfile.skills ? [...currentProfile.skills] : []);
+      setNewSkillInput("");
+      setError("");
+    }
+  }, [isOpen, currentProfile]);
+
   function resetForm() {
     setName(currentProfile?.name ?? "");
     setGithubUrl(currentProfile?.githubUrl ?? "");
     setBio(currentProfile?.bio ?? "");
     setLookingFor(currentProfile?.lookingFor ?? "");
     setLocation(currentProfile?.location ?? "");
-    setSkills(currentProfile?.skills ?? []);
+    setSkills(currentProfile?.skills ? [...currentProfile.skills] : []);
     setNewSkillInput("");
     setError("");
   }

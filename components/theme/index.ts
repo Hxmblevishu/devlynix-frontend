@@ -10,5 +10,6 @@ export { RetroModal } from "./RetroModal";
 export { EditProfileModal } from "./EditProfileModal";
 export { IncomingRequestsModal } from "./IncomingRequestsModal";
 export { TeammateIntelPanel } from "./TeammateIntelPanel";
+export { CandidateDetailModal } from "./CandidateDetailModal";
 export { MeasurementDecor } from "./MeasurementDecor";
 export { CassettePlayerIllustration } from "./CassettePlayerIllustration";

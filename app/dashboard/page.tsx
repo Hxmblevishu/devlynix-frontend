@@ -5,6 +5,7 @@ import { RetroButton } from "@/components/theme/RetroButton";
 import { TechnicalFrame } from "@/components/theme/TechnicalFrame";
 import { EditProfileModal } from "@/components/theme/EditProfileModal";
 import { IncomingRequestsModal } from "@/components/theme/IncomingRequestsModal";
+import { CandidateDetailModal } from "@/components/theme/CandidateDetailModal";
 import {
   api,
   ApiError,
@@ -51,9 +52,11 @@ export default function DashboardPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isRadarOpen, setIsRadarOpen] = useState(false);
   const [radarActionId, setRadarActionId] = useState<number | null>(null);
+  const [selectedCandidateDossier, setSelectedCandidateDossier] = useState<DiscoverResult | null>(null);
 
   // Skill Filtering
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [customSkillSearch, setCustomSkillSearch] = useState("");
 
   useEffect(() => {
@@ -141,10 +144,14 @@ export default function DashboardPage() {
     const candidateToSwipe = discover.find((c) => c.profile.id === targetUserId);
     if (!candidateToSwipe) return;
 
-    // Optimistically remove from discover feed
+    // Optimistically remove from discover feed and close dossier if open
     setDiscover((current) =>
       current.filter((candidate) => candidate.profile.id !== targetUserId),
     );
+    if (selectedCandidateDossier?.profile.id === targetUserId) {
+      setSelectedCandidateDossier(null);
+    }
+
     setActiveSwipe(targetUserId);
     setError("");
     setSuccessBanner("");
@@ -154,7 +161,7 @@ export default function DashboardPage() {
       if (result.matched) {
         setMatches((current) => [result, ...current]);
         setSuccessBanner(
-          `MUTUAL MATCH WITH ${candidateToSwipe.profile.name.toUpperCase()}! OPEN MATCHES TO CHAT.`,
+          `MUTUAL MATCH WITH ${candidateToSwipe.profile.name.toUpperCase()}! OPEN MATCHES TO TRANSMIT.`,
         );
       }
     } catch (requestError) {
@@ -214,7 +221,7 @@ export default function DashboardPage() {
   function handleProfileUpdated(updatedProfile: Profile) {
     setProfile(updatedProfile);
     updateStoredUser(updatedProfile);
-    setSuccessBanner("PROFILE DOSSIER COMMITTED SUCCESSFULLY.");
+    setSuccessBanner("PROFILE DOSSIER UPDATED AND SYNCED.");
   }
 
   return (
@@ -257,7 +264,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => setIsEditModalOpen(true)}
-                    className="border border-accent px-3 py-1 font-heading text-xs font-bold uppercase tracking-widest text-accent hover:bg-accent hover:text-olive transition-colors shadow-[2px_2px_0_0_rgba(0,0,0,1)] active:translate-y-0.5"
+                    className="border border-accent px-3 py-1.5 font-heading text-xs font-bold uppercase tracking-widest text-accent hover:bg-accent hover:text-olive transition-colors shadow-[2px_2px_0_0_rgba(0,0,0,1)] active:translate-y-0.5"
                   >
                     [EDIT_PROFILE]
                   </button>
@@ -339,7 +346,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Discovery Queue with Skill Filter Bar */}
+            {/* Discovery Queue with Enhanced Skill Filter Bar */}
             <section className="space-y-6">
               <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
@@ -360,73 +367,114 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Retro Skill Filter Bar */}
-              <div className="border-2 border-border bg-olive-light/10 p-4 space-y-3">
+              {/* Intuitive Stack Filter Bar with [ALL_PROFILES] and [+ ADD_FILTER] */}
+              <div className="border-2 border-border bg-olive-light/10 p-4 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-1.5 bg-accent" />
-                    <span className="font-heading text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
-                      STACK_FILTER_RADAR
-                    </span>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* ALL PROFILES DEFAULT */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleFilterBySkill(null);
+                        setIsFilterExpanded(false);
+                      }}
+                      className={`border px-4 py-1.5 font-heading text-xs uppercase tracking-wider transition-all shadow-[2px_2px_0_0_rgba(0,0,0,1)] ${
+                        selectedSkill === null
+                          ? "border-accent bg-accent text-olive font-bold"
+                          : "border-border text-text-primary hover:border-accent hover:text-accent bg-olive-light/20"
+                      }`}
+                    >
+                      ALL_PROFILES
+                    </button>
+
+                    {/* Active filter badge if selected */}
+                    {selectedSkill && (
+                      <span className="inline-flex items-center gap-2 border border-accent bg-accent/20 px-3 py-1 font-mono text-xs text-accent">
+                        <span>FILTER: {selectedSkill}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleFilterBySkill(null)}
+                          className="hover:text-white font-bold ml-1"
+                          aria-label="Remove filter"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+
+                    {/* ADD FILTER EXPAND/COLLAPSE TOGGLE */}
+                    <button
+                      type="button"
+                      onClick={() => setIsFilterExpanded((prev) => !prev)}
+                      className={`border px-3.5 py-1.5 font-heading text-xs uppercase tracking-wider transition-all shadow-[2px_2px_0_0_rgba(0,0,0,1)] ${
+                        isFilterExpanded
+                          ? "border-accent bg-accent/25 text-accent font-bold"
+                          : "border-accent text-accent hover:bg-accent hover:text-olive"
+                      }`}
+                    >
+                      {isFilterExpanded ? "[-] HIDE_FILTERS" : "[+] ADD_FILTER"}
+                    </button>
                   </div>
+
                   {selectedSkill && (
                     <button
                       type="button"
                       onClick={() => handleFilterBySkill(null)}
                       className="font-mono text-[10px] text-accent underline hover:opacity-80"
                     >
-                      [CLEAR FILTER]
+                      [RESET_TO_ALL]
                     </button>
                   )}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleFilterBySkill(null)}
-                    className={`border px-3 py-1 font-mono text-[10px] transition-colors ${
-                      selectedSkill === null
-                        ? "border-accent bg-accent text-olive font-bold"
-                        : "border-border text-text-secondary hover:border-accent hover:text-accent"
-                    }`}
-                  >
-                    ALL_PROFILES
-                  </button>
-                  {allFilterSkills.map((skill) => {
-                    const isSelected =
-                      selectedSkill?.toLowerCase() === skill.toLowerCase();
-                    return (
-                      <button
-                        key={skill}
-                        type="button"
-                        onClick={() => handleFilterBySkill(isSelected ? null : skill)}
-                        className={`border px-3 py-1 font-mono text-[10px] transition-colors ${
-                          isSelected
-                            ? "border-accent bg-accent text-olive font-bold"
-                            : "border-border text-text-primary hover:border-accent hover:text-accent"
-                        }`}
-                      >
-                        {skill}
-                      </button>
-                    );
-                  })}
-                </div>
+                {/* Filter Selector Panel (revealed when [+ ADD_FILTER] is clicked) */}
+                {isFilterExpanded && (
+                  <div className="space-y-3 pt-3 border-t border-border/80">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-1 bg-accent" />
+                      <span className="font-heading text-[10px] font-bold uppercase tracking-[0.2em] text-text-secondary">
+                        SELECT TECH STACK OR ENTER CUSTOM TAG
+                      </span>
+                    </div>
 
-                <form onSubmit={handleCustomSearchSubmit} className="flex gap-2 pt-1 max-w-md">
-                  <input
-                    type="text"
-                    value={customSkillSearch}
-                    onChange={(e) => setCustomSkillSearch(e.target.value)}
-                    placeholder="Search custom stack (e.g. GraphQL, Solidity, PyTorch)..."
-                    className="flex-1 border-b border-accent/40 bg-transparent px-2 py-1 font-mono text-xs text-text-primary placeholder:text-text-secondary/40 outline-none focus:border-accent"
-                  />
-                  <button
-                    type="submit"
-                    className="border border-accent px-3 py-1 font-heading text-[10px] font-bold uppercase tracking-wider text-accent hover:bg-accent hover:text-olive transition-colors"
-                  >
-                    FILTER
-                  </button>
-                </form>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {allFilterSkills.map((skill) => {
+                        const isSelected =
+                          selectedSkill?.toLowerCase() === skill.toLowerCase();
+                        return (
+                          <button
+                            key={skill}
+                            type="button"
+                            onClick={() => handleFilterBySkill(isSelected ? null : skill)}
+                            className={`border px-3 py-1 font-mono text-[10px] transition-colors ${
+                              isSelected
+                                ? "border-accent bg-accent text-olive font-bold shadow-[2px_2px_0_0_rgba(0,0,0,1)]"
+                                : "border-border text-text-primary hover:border-accent hover:text-accent bg-olive-light/20"
+                            }`}
+                          >
+                            {skill}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <form onSubmit={handleCustomSearchSubmit} className="flex gap-2 pt-2 max-w-md">
+                      <input
+                        type="text"
+                        value={customSkillSearch}
+                        onChange={(e) => setCustomSkillSearch(e.target.value)}
+                        placeholder="Search custom stack (e.g. GraphQL, Solidity, PyTorch)..."
+                        className="flex-1 border-b border-accent/40 bg-transparent px-2 py-1 font-mono text-xs text-text-primary placeholder:text-text-secondary/40 outline-none focus:border-accent"
+                      />
+                      <button
+                        type="submit"
+                        className="border border-accent px-3 py-1 font-heading text-[10px] font-bold uppercase tracking-wider text-accent hover:bg-accent hover:text-olive transition-colors"
+                      >
+                        APPLY
+                      </button>
+                    </form>
+                  </div>
+                )}
               </div>
 
               {/* Cards Deck */}
@@ -453,7 +501,8 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                  {discover.map(({ profile: candidate, sharedSkillCount, sharedSkills }) => {
+                  {discover.map((candidateDossier) => {
+                    const { profile: candidate, sharedSkillCount, sharedSkills } = candidateDossier;
                     const avatarUrl = getAvatarUrl(candidate.githubUrl);
                     const githubHandle = getGithubUsername(candidate.githubUrl);
                     const isSwiping = activeSwipe === candidate.id;
@@ -461,20 +510,25 @@ export default function DashboardPage() {
                     return (
                       <article
                         key={candidate.id}
-                        className="flex min-h-[380px] flex-col border-2 border-accent bg-olive-light/15 p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)] transition-all hover:border-accent/90"
+                        className="group relative flex min-h-[400px] flex-col border-2 border-accent bg-olive-light/15 p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)] transition-all hover:border-accent hover:-translate-y-1 hover:shadow-[10px_10px_0_0_rgba(0,0,0,1)]"
                       >
                         {/* Candidate Top Bar */}
                         <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
-                          <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCandidateDossier(candidateDossier)}
+                            className="flex items-center gap-3 text-left focus:outline-none"
+                            title="Click to view full dossier"
+                          >
                             {avatarUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
                                 src={avatarUrl}
                                 alt={candidate.name}
-                                className="h-12 w-12 border-2 border-accent object-cover shadow-[2px_2px_0_0_rgba(0,0,0,1)]"
+                                className="h-12 w-12 border-2 border-accent object-cover shadow-[2px_2px_0_0_rgba(0,0,0,1)] group-hover:scale-105 transition-transform"
                               />
                             ) : (
-                              <div className="flex h-12 w-12 items-center justify-center border-2 border-accent bg-olive font-display text-xl text-accent shadow-[2px_2px_0_0_rgba(0,0,0,1)]">
+                              <div className="flex h-12 w-12 items-center justify-center border-2 border-accent bg-olive font-display text-xl text-accent shadow-[2px_2px_0_0_rgba(0,0,0,1)] group-hover:scale-105 transition-transform">
                                 {candidate.name.slice(0, 2).toUpperCase()}
                               </div>
                             )}
@@ -482,7 +536,7 @@ export default function DashboardPage() {
                               <p className="font-mono text-[9px] text-text-secondary">
                                 SIGNAL_ID::{candidate.id}
                               </p>
-                              <h3 className="font-display text-3xl text-accent leading-none mt-0.5">
+                              <h3 className="font-display text-3xl text-accent leading-none mt-0.5 group-hover:underline">
                                 {candidate.name}
                               </h3>
                               {candidate.location && (
@@ -491,24 +545,36 @@ export default function DashboardPage() {
                                 </p>
                               )}
                             </div>
-                          </div>
+                          </button>
 
-                          {githubHandle && (
-                            <a
-                              href={`https://github.com/${githubHandle}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="border border-accent/40 bg-accent/10 px-2 py-1 font-mono text-[9px] text-accent hover:bg-accent hover:text-olive transition-colors"
-                              title={`View @${githubHandle} on GitHub`}
+                          <div className="flex flex-col items-end gap-1.5">
+                            {githubHandle && (
+                              <a
+                                href={`https://github.com/${githubHandle}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="border border-accent/40 bg-accent/10 px-2 py-0.5 font-mono text-[9px] text-accent hover:bg-accent hover:text-olive transition-colors"
+                                title={`View @${githubHandle} on GitHub`}
+                              >
+                                GITHUB ↗
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedCandidateDossier(candidateDossier)}
+                              className="font-mono text-[9px] text-text-secondary hover:text-accent underline"
                             >
-                              GITHUB ↗
-                            </a>
-                          )}
+                              [DETAILS ↗]
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Bio / Intent */}
-                        <div className="mt-4 flex-1 space-y-3">
-                          <p className="font-body text-sm leading-relaxed text-text-secondary line-clamp-4">
+                        {/* Bio / Intent - Click to Inspect */}
+                        <div
+                          onClick={() => setSelectedCandidateDossier(candidateDossier)}
+                          className="mt-4 flex-1 space-y-3 cursor-pointer"
+                        >
+                          <p className="font-body text-sm leading-relaxed text-text-secondary line-clamp-3">
                             {candidate.bio || "Developer ready for hackathons and projects."}
                           </p>
 
@@ -531,7 +597,7 @@ export default function DashboardPage() {
                             </span>
                           </div>
                           <div className="flex flex-wrap gap-1">
-                            {candidate.skills.slice(0, 6).map((skill) => {
+                            {candidate.skills.slice(0, 5).map((skill) => {
                               const isShared = sharedSkills.includes(skill);
                               return (
                                 <span
@@ -546,10 +612,14 @@ export default function DashboardPage() {
                                 </span>
                               );
                             })}
-                            {candidate.skills.length > 6 && (
-                              <span className="font-mono text-[9px] text-text-secondary self-center">
-                                +{candidate.skills.length - 6} more
-                              </span>
+                            {candidate.skills.length > 5 && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedCandidateDossier(candidateDossier)}
+                                className="font-mono text-[9px] text-accent hover:underline self-center"
+                              >
+                                +{candidate.skills.length - 5} more
+                              </button>
                             )}
                           </div>
                         </div>
@@ -582,7 +652,16 @@ export default function DashboardPage() {
         )}
       </TechnicalFrame>
 
-      {/* Edit Profile Modal */}
+      {/* Candidate Dossier Detail Modal */}
+      <CandidateDetailModal
+        isOpen={selectedCandidateDossier !== null}
+        onClose={() => setSelectedCandidateDossier(null)}
+        candidate={selectedCandidateDossier}
+        onSwipe={handleSwipe}
+        isSwiping={activeSwipe !== null}
+      />
+
+      {/* Edit Profile Modal (Pre-filled + PATCH) */}
       <EditProfileModal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
