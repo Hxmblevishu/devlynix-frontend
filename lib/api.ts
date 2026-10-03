@@ -62,7 +62,7 @@ interface ApiErrorBody {
 }
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  "https://devlynix-buildathon-2-0.onrender.com/api";
+  "http://localhost:8080/api";
 
 export class ApiError extends Error {
   constructor(
