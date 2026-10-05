@@ -26,6 +26,7 @@ export interface Match {
   user: Profile;
   matchedAt: string | null;
   matched: boolean;
+  unreadCount?: number;
 }
 
 export interface Message {
@@ -35,6 +36,8 @@ export interface Message {
   senderName: string;
   content: string;
   sentAt: string;
+  isRead?: boolean;
+  readAt?: string | null;
 }
 
 export interface RegisterPayload {
@@ -203,5 +206,29 @@ export const api = {
       { method: "POST", body: JSON.stringify({ matchId, content }) },
       token,
     );
+  },
+
+  resetPasses(token: string) {
+    return request<void>(
+      "/discover/reset-passes",
+      { method: "DELETE" },
+      token,
+    );
+  },
+
+  unmatch(token: string, matchId: number) {
+    return request<void>(
+      `/matches/${matchId}`,
+      { method: "DELETE" },
+      token,
+    );
+  },
+
+  markChatAsRead(token: string, matchId: number) {
+    return request<void>(
+      `/chat/${matchId}/read`,
+      { method: "PUT" },
+      token,
+    ).catch(() => undefined);
   },
 };

@@ -13,6 +13,7 @@ import {
   type Match,
   type Message,
 } from "@/lib/api";
+import { soundFx } from "@/lib/sound";
 import { clearSession, getSession } from "@/lib/session";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
@@ -76,7 +77,12 @@ export default function MatchesPage() {
 
     let isMounted = true;
 
-    // 1. Initial fetch of full conversation
+    // 1. Mark as read and fetch full conversation
+    api.markChatAsRead(token, selectedMatchId);
+    setMatches((current) =>
+      current.map((m) => (m.id === selectedMatchId ? { ...m, unreadCount: 0 } : m)),
+    );
+
     api
       .getMessages(token, selectedMatchId)
       .then((initialMessages) => {
@@ -84,32 +90,33 @@ export default function MatchesPage() {
       })
       .catch((requestError) => handleRequestError(requestError));
 
-    // 2. Adaptive Polling (2s when tab active, 30s when backgrounded)
+    // 2. Adaptive Delta Polling (2s when tab active, 30s when backgrounded)
     let pollTimer: NodeJS.Timeout;
 
     function fetchLatestMessages() {
-      if (!isMounted) return;
-      api
-        .getMessages(token, selectedMatchId!)
-        .then((latest) => {
-          if (!isMounted) return;
-          setMessages((current) => {
-            // Keep optimistic messages that haven't landed yet
-            const optimistic = current.filter((m) => m.isOptimistic);
-            if (latest.length !== current.length - optimistic.length) {
-              return [...latest, ...optimistic];
-            }
-            if (
-              latest.length > 0 &&
-              current.length > 0 &&
-              latest[latest.length - 1].id !== current[current.length - 1].id
-            ) {
-              return [...latest, ...optimistic];
-            }
-            return current;
-          });
-        })
-        .catch(() => {});
+      if (!isMounted || selectedMatchId === null) return;
+
+      setMessages((current) => {
+        const lastRealMsg = current.filter((m) => !m.isOptimistic).slice(-1)[0];
+        const afterId = lastRealMsg ? lastRealMsg.id : undefined;
+
+        api
+          .getMessages(token, selectedMatchId!, afterId)
+          .then((newMessages) => {
+            if (!isMounted || newMessages.length === 0) return;
+            soundFx.playMessageReceived();
+            setMessages((prev) => {
+              const optimistic = prev.filter((m) => m.isOptimistic);
+              const existingIds = new Set(prev.map((m) => m.id));
+              const fresh = newMessages.filter((m) => !existingIds.has(m.id));
+              if (fresh.length === 0) return prev;
+              return [...prev.filter((m) => !m.isOptimistic), ...fresh, ...optimistic];
+            });
+            api.markChatAsRead(token, selectedMatchId!);
+          })
+          .catch(() => {});
+        return current;
+      });
     }
 
     function setupPolling() {
@@ -171,6 +178,7 @@ export default function MatchesPage() {
     setMessage("");
     setSending(true);
     setError("");
+    soundFx.playMessageSent();
 
     try {
       const sent = await api.sendMessage(token, selectedMatchId, content);
@@ -185,6 +193,27 @@ export default function MatchesPage() {
       handleRequestError(requestError);
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleUnmatch() {
+    if (!token || selectedMatchId === null) return;
+    const confirmUnmatch = window.confirm(
+      "CONFIRMATION REQUIRED // Terminate connection and permanently erase chat with this developer?",
+    );
+    if (!confirmUnmatch) return;
+
+    try {
+      await api.unmatch(token, selectedMatchId);
+      soundFx.playSwipePass();
+      const matchIdToDrop = selectedMatchId;
+      setMatches((current) => current.filter((m) => m.id !== matchIdToDrop));
+      setMessages([]);
+      setIsIntelOpen(false);
+      const remaining = matches.filter((m) => m.id !== matchIdToDrop);
+      setSelectedMatchId(remaining.length > 0 ? (remaining[0].id ?? null) : null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to unmatch.");
     }
   }
 
@@ -272,9 +301,16 @@ export default function MatchesPage() {
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <span className="block font-heading text-base font-bold truncate">
-                            {match.user.name}
-                          </span>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="block font-heading text-base font-bold truncate">
+                              {match.user.name}
+                            </span>
+                            {Boolean(match.unreadCount && match.unreadCount > 0) && (
+                              <span className="border border-accent bg-accent px-1.5 py-0.5 font-mono text-[8px] font-bold text-olive uppercase shrink-0">
+                                {match.unreadCount} NEW
+                              </span>
+                            )}
+                          </div>
                           <span
                             className={`mt-0.5 block font-mono text-[9px] truncate ${
                               isSelected ? "text-olive/80" : "text-text-secondary"
@@ -433,6 +469,7 @@ export default function MatchesPage() {
                 <TeammateIntelPanel
                   user={selectedMatch.user}
                   onClose={() => setIsIntelOpen(false)}
+                  onUnmatch={handleUnmatch}
                 />
               )}
             </div>

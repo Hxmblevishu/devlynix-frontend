@@ -17,6 +17,7 @@ import {
   type SwipeDirection,
 } from "@/lib/api";
 import { clearSession, getSession, updateStoredUser } from "@/lib/session";
+import { soundFx } from "@/lib/sound";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -137,12 +138,20 @@ export default function DashboardPage() {
     }
   }
 
-  // Optimistic swiping
+  const [isRewinding, setIsRewinding] = useState(false);
+
+  // Optimistic swiping with sound effects
   async function handleSwipe(targetUserId: number, direction: SwipeDirection) {
     if (!token) return;
 
     const candidateToSwipe = discover.find((c) => c.profile.id === targetUserId);
     if (!candidateToSwipe) return;
+
+    if (direction === "LIKE") {
+      soundFx.playSwipeLike();
+    } else {
+      soundFx.playSwipePass();
+    }
 
     // Optimistically remove from discover feed and close dossier if open
     setDiscover((current) =>
@@ -159,6 +168,7 @@ export default function DashboardPage() {
     try {
       const result = await api.swipe(token, targetUserId, direction);
       if (result.matched) {
+        soundFx.playMatchSound();
         setMatches((current) => [result, ...current]);
         setSuccessBanner(
           `MUTUAL MATCH WITH ${candidateToSwipe.profile.name.toUpperCase()}! OPEN MATCHES TO TRANSMIT.`,
@@ -177,11 +187,12 @@ export default function DashboardPage() {
     }
   }
 
-  // Handle incoming request actions
+  // Handle incoming request actions with sound
   async function handleAcceptIncoming(candidate: Profile) {
     if (!token) return;
     setRadarActionId(candidate.id);
     setError("");
+    soundFx.playMatchSound();
 
     try {
       const result = await api.swipe(token, candidate.id, "LIKE");
@@ -205,6 +216,7 @@ export default function DashboardPage() {
     if (!token) return;
     setRadarActionId(candidateId);
     setError("");
+    soundFx.playSwipePass();
 
     try {
       await api.swipe(token, candidateId, "PASS");
@@ -215,6 +227,23 @@ export default function DashboardPage() {
       );
     } finally {
       setRadarActionId(null);
+    }
+  }
+
+  async function handleResetPasses() {
+    if (!token) return;
+    setIsRewinding(true);
+    soundFx.playSwipeLike();
+    setError("");
+    try {
+      await api.resetPasses(token);
+      const refreshed = await api.discover(token, selectedSkill || undefined);
+      setDiscover(refreshed);
+      setSuccessBanner("REWIND COMPLETE // All skipped developer passes reset to queue.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to reset passes.");
+    } finally {
+      setIsRewinding(false);
     }
   }
 
@@ -483,21 +512,30 @@ export default function DashboardPage() {
                   FILTERING_CANDIDATE_SIGNALS...
                 </div>
               ) : discover.length === 0 ? (
-                <div className="border border-dashed border-border p-12 text-center space-y-3">
+                <div className="border border-dashed border-border p-12 text-center space-y-4">
                   <p className="font-mono text-xs text-text-secondary">
                     {selectedSkill
                       ? `NO_DEVELOPERS_FOUND_MATCHING "${selectedSkill.toUpperCase()}".`
                       : "NO_MORE_PROFILES_IN_QUEUE. YOU HAVE SEEN ALL AVAILABLE BUILDERS."}
                   </p>
-                  {selectedSkill && (
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    {selectedSkill && (
+                      <RetroButton
+                        variant="outline"
+                        onClick={() => handleFilterBySkill(null)}
+                        className="text-xs"
+                      >
+                        RESET_STACK_FILTER
+                      </RetroButton>
+                    )}
                     <RetroButton
-                      variant="outline"
-                      onClick={() => handleFilterBySkill(null)}
+                      onClick={handleResetPasses}
+                      disabled={isRewinding}
                       className="text-xs"
                     >
-                      RESET_STACK_FILTER
+                      {isRewinding ? "REWINDING_CASSETTE..." : "REWIND_QUEUE // RESET_SKIPPED_PASSES"}
                     </RetroButton>
-                  )}
+                  </div>
                 </div>
               ) : (
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
