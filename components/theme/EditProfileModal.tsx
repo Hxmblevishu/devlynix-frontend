@@ -26,6 +26,7 @@ export function EditProfileModal({
   const [bio, setBio] = useState(currentProfile?.bio ?? "");
   const [lookingFor, setLookingFor] = useState(currentProfile?.lookingFor ?? "");
   const [location, setLocation] = useState(currentProfile?.location ?? "");
+  const [projectPitch, setProjectPitch] = useState(currentProfile?.projectPitch ?? "");
   const [skills, setSkills] = useState<string[]>(currentProfile?.skills ?? []);
   const [newSkillInput, setNewSkillInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -39,6 +40,7 @@ export function EditProfileModal({
       setBio(currentProfile.bio ?? "");
       setLookingFor(currentProfile.lookingFor ?? "");
       setLocation(currentProfile.location ?? "");
+      setProjectPitch(currentProfile.projectPitch ?? "");
       setSkills(currentProfile.skills ? [...currentProfile.skills] : []);
       setNewSkillInput("");
       setError("");
@@ -51,6 +53,7 @@ export function EditProfileModal({
     setBio(currentProfile?.bio ?? "");
     setLookingFor(currentProfile?.lookingFor ?? "");
     setLocation(currentProfile?.location ?? "");
+    setProjectPitch(currentProfile?.projectPitch ?? "");
     setSkills(currentProfile?.skills ? [...currentProfile.skills] : []);
     setNewSkillInput("");
     setError("");
@@ -82,6 +85,7 @@ export function EditProfileModal({
       bio: bio.trim() || undefined,
       lookingFor: lookingFor.trim() || undefined,
       location: location.trim() || undefined,
+      projectPitch: projectPitch.trim() || undefined,
       skills,
     };
 
@@ -153,8 +157,25 @@ export function EditProfileModal({
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <div className="h-1 w-1 bg-accent" />
+            <label className="font-heading text-[10px] font-bold uppercase tracking-[0.2em] text-accent">
+              Hackathon Project Pitch / Concept (Max 600)
+            </label>
+          </div>
+          <textarea
+            value={projectPitch}
+            onChange={(e) => setProjectPitch(e.target.value)}
+            placeholder="Pitch your hackathon project concept, vision, or what you want to build together..."
+            rows={2}
+            maxLength={600}
+            className="w-full border-b border-accent/30 bg-transparent px-2 py-2 font-mono text-xs text-text-primary placeholder:text-text-secondary/40 outline-none transition-all focus:border-accent focus:bg-olive-light/20"
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="h-1 w-1 bg-accent" />
             <label className="font-heading text-[10px] font-bold uppercase tracking-[0.2em] text-text-primary">
-              Developer Bio / Pitch (Max 600)
+              Developer Bio / Story (Max 600)
             </label>
           </div>
           <textarea

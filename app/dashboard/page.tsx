@@ -571,9 +571,14 @@ export default function DashboardPage() {
                               </div>
                             )}
                             <div>
-                              <p className="font-mono text-[9px] text-text-secondary">
-                                SIGNAL_ID::{candidate.id}
-                              </p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-mono text-[9px] text-text-secondary">
+                                  SIGNAL_ID::{candidate.id}
+                                </p>
+                                <span className="border border-accent bg-accent/20 px-1.5 py-0.5 font-mono text-[8px] text-accent font-bold">
+                                  ⚡ {candidateDossier.synergyScore || 75}% SYNERGY
+                                </span>
+                              </div>
                               <h3 className="font-display text-3xl text-accent leading-none mt-0.5 group-hover:underline">
                                 {candidate.name}
                               </h3>
@@ -620,6 +625,13 @@ export default function DashboardPage() {
                             <div className="border-l-2 border-accent bg-olive-light/25 p-2 font-mono text-[10px] text-text-primary">
                               <span className="text-accent font-bold">LOOKING FOR:</span>{" "}
                               {candidate.lookingFor}
+                            </div>
+                          )}
+
+                          {candidate.projectPitch && (
+                            <div className="border border-accent/40 bg-accent/10 p-2 font-mono text-[10px] text-text-primary">
+                              <span className="text-accent font-bold">PITCH:</span>{" "}
+                              <span className="italic">&quot;{candidate.projectPitch}&quot;</span>
                             </div>
                           )}
                         </div>

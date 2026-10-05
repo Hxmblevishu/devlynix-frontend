@@ -19,6 +19,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [githubUrl, setGithubUrl] = useState("");
+  const [projectPitch, setProjectPitch] = useState("");
   const [skills, setSkills] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -39,6 +40,7 @@ export default function RegisterPage() {
         email,
         password,
         githubUrl: githubUrl || undefined,
+        projectPitch: projectPitch.trim() || undefined,
         skills: skills
           .split(",")
           .map((skill) => skill.trim())
@@ -129,6 +131,13 @@ export default function RegisterPage() {
                 placeholder="https://github.com/username"
                 value={githubUrl}
                 onChange={(event) => setGithubUrl(event.target.value)}
+              />
+              <RetroInput
+                label="Project_Pitch / Hackathon Idea"
+                type="text"
+                placeholder="Autonomous agent swarm for web dev"
+                value={projectPitch}
+                onChange={(event) => setProjectPitch(event.target.value)}
               />
               <RetroInput
                 label="Skills / Comma Separated"

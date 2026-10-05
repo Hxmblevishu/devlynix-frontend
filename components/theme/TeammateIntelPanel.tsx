@@ -89,6 +89,17 @@ export function TeammateIntelPanel({ user, onClose, onUnmatch }: TeammateIntelPa
         </div>
       )}
 
+      {user.projectPitch && (
+        <div className="space-y-1">
+          <span className="font-mono text-[9px] uppercase tracking-wider text-accent font-bold">
+            HACKATHON PITCH // CONCEPT
+          </span>
+          <p className="border-l-2 border-accent bg-accent/10 p-2 font-mono text-xs text-text-primary italic">
+            &quot;{user.projectPitch}&quot;
+          </p>
+        </div>
+      )}
+
       <div className="space-y-2">
         <span className="font-mono text-[9px] uppercase tracking-wider text-text-secondary">
           TECHNICAL STACK ({user.skills.length})

@@ -6,6 +6,7 @@ export interface Profile {
   bio: string | null;
   lookingFor: string | null;
   location: string | null;
+  projectPitch?: string | null;
   skills: string[];
   createdAt: string;
 }
@@ -19,6 +20,7 @@ export interface DiscoverResult {
   profile: Profile;
   sharedSkillCount: number;
   sharedSkills: string[];
+  synergyScore?: number;
 }
 
 export interface Match {
@@ -45,6 +47,7 @@ export interface RegisterPayload {
   email: string;
   password: string;
   githubUrl?: string;
+  projectPitch?: string;
   skills: string[];
 }
 
@@ -54,6 +57,7 @@ export interface UpdateProfilePayload {
   bio?: string;
   lookingFor?: string;
   location?: string;
+  projectPitch?: string;
   skills?: string[];
 }
 
@@ -150,6 +154,14 @@ export const api = {
     });
   },
 
+  refreshToken(token: string) {
+    return request<AuthResponse>(
+      "/auth/refresh",
+      { method: "POST" },
+      token,
+    );
+  },
+
   getProfile(token: string) {
     return request<Profile>("/profile/me", {}, token);
   },
@@ -171,8 +183,12 @@ export const api = {
     });
   },
 
-  discover(token: string, skill?: string) {
-    const query = skill ? `?skill=${encodeURIComponent(skill)}` : "";
+  discover(token: string, skill?: string, page: number = 0, size: number = 50) {
+    const params = new URLSearchParams();
+    if (skill) params.set("skill", skill);
+    if (page > 0) params.set("page", page.toString());
+    if (size !== 50) params.set("size", size.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
     return request<DiscoverResult[]>(`/discover${query}`, {}, token);
   },
 
@@ -195,8 +211,11 @@ export const api = {
     return request<Profile[]>("/matches/requests", {}, token).catch(() => []);
   },
 
-  getMessages(token: string, matchId: number, afterId?: number) {
-    const query = afterId ? `?after=${afterId}` : "";
+  getMessages(token: string, matchId: number, afterId?: number, limit: number = 100) {
+    const params = new URLSearchParams();
+    if (afterId) params.set("after", afterId.toString());
+    if (limit !== 100) params.set("limit", limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
     return request<Message[]>(`/chat/${matchId}/messages${query}`, {}, token);
   },
 

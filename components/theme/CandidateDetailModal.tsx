@@ -52,6 +52,9 @@ export function CandidateDetailModal({
               <span className="font-mono text-[9px] text-text-secondary">
                 ID::{profile.id}
               </span>
+              <span className="border border-accent bg-accent/20 px-2 py-0.5 font-mono text-[9px] text-accent font-bold">
+                ⚡ {candidate.synergyScore || 75}% SYNERGY
+              </span>
               {profile.location && (
                 <span className="border border-border bg-olive-light/20 px-2 py-0.5 font-mono text-[9px] text-text-secondary">
                   📍 {profile.location}
@@ -83,6 +86,18 @@ export function CandidateDetailModal({
             </span>
             <div className="border-l-2 border-accent bg-olive-light/25 p-3 font-mono text-xs text-text-primary">
               {profile.lookingFor}
+            </div>
+          </div>
+        )}
+
+        {/* Hackathon Project Pitch */}
+        {profile.projectPitch && (
+          <div className="space-y-1.5">
+            <span className="font-mono text-[9px] uppercase tracking-wider text-accent font-bold">
+              HACKATHON PITCH // CONCEPT
+            </span>
+            <div className="border border-accent/40 bg-accent/10 p-3 font-mono text-xs text-text-primary italic">
+              &quot;{profile.projectPitch}&quot;
             </div>
           </div>
         )}
