@@ -4,11 +4,16 @@ const SESSION_KEY = "devlynix.session";
 
 export interface AuthSession {
   token: string;
+  refreshToken?: string;
   user: Profile;
 }
 
 export function saveSession(response: AuthResponse): AuthSession {
-  const session = { token: response.token, user: response.user };
+  const session: AuthSession = {
+    token: response.token,
+    refreshToken: response.refreshToken,
+    user: response.user,
+  };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   return session;
 }
@@ -28,6 +33,20 @@ export function getSession(): AuthSession | null {
   } catch {
     localStorage.removeItem(SESSION_KEY);
     return null;
+  }
+}
+
+export function updateSessionTokens(token: string, refreshToken?: string) {
+  const session = getSession();
+  if (session) {
+    localStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({
+        ...session,
+        token,
+        refreshToken: refreshToken ?? session.refreshToken,
+      }),
+    );
   }
 }
 

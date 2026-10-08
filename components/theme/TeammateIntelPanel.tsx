@@ -6,10 +6,11 @@ import { getAvatarUrl, getGithubUsername, type Profile } from "@/lib/api";
 interface TeammateIntelPanelProps {
   user: Profile;
   onClose: () => void;
+  onClearChat?: () => void;
   onUnmatch?: () => void;
 }
 
-export function TeammateIntelPanel({ user, onClose, onUnmatch }: TeammateIntelPanelProps) {
+export function TeammateIntelPanel({ user, onClose, onClearChat, onUnmatch }: TeammateIntelPanelProps) {
   const avatarUrl = getAvatarUrl(user.githubUrl);
   const githubHandle = getGithubUsername(user.githubUrl);
 
@@ -131,15 +132,26 @@ export function TeammateIntelPanel({ user, onClose, onUnmatch }: TeammateIntelPa
         </div>
       )}
 
-      {onUnmatch && (
-        <div className="pt-4 mt-auto border-t border-border">
-          <RetroButton
-            variant="outline"
-            onClick={onUnmatch}
-            className="w-full py-2 text-[10px] text-red-400 border-red-400/50 hover:bg-red-400/10 hover:border-red-400"
-          >
-            TERMINATE CONNECTION // UNMATCH
-          </RetroButton>
+      {(onClearChat || onUnmatch) && (
+        <div className="pt-4 mt-auto border-t border-border space-y-2">
+          {onClearChat && (
+            <RetroButton
+              variant="outline"
+              onClick={onClearChat}
+              className="w-full py-2 text-[10px] text-amber-300 border-amber-400/50 hover:bg-amber-400/10 hover:border-amber-400"
+            >
+              CLEAR CHAT HISTORY
+            </RetroButton>
+          )}
+          {onUnmatch && (
+            <RetroButton
+              variant="outline"
+              onClick={onUnmatch}
+              className="w-full py-2 text-[10px] text-red-400 border-red-400/50 hover:bg-red-400/10 hover:border-red-400"
+            >
+              TERMINATE CONNECTION // UNMATCH
+            </RetroButton>
+          )}
         </div>
       )}
     </aside>

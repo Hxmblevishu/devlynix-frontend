@@ -78,10 +78,16 @@ export default function MatchesPage() {
     let isMounted = true;
 
     // 1. Mark as read and fetch full conversation
-    api.markChatAsRead(token, selectedMatchId);
-    setMatches((current) =>
-      current.map((m) => (m.id === selectedMatchId ? { ...m, unreadCount: 0 } : m)),
-    );
+    api
+      .markChatAsRead(token, selectedMatchId)
+      .then(() => {
+        if (isMounted) {
+          setMatches((current) =>
+            current.map((m) => (m.id === selectedMatchId ? { ...m, unreadCount: 0 } : m)),
+          );
+        }
+      })
+      .catch(() => {});
 
     api
       .getMessages(token, selectedMatchId)
@@ -159,7 +165,6 @@ export default function MatchesPage() {
     const content = message.trim();
     if (!content || !token || selectedMatchId === null) return;
 
-    const currentMatch = matches.find((m) => m.id === selectedMatchId);
     const session = getSession();
     const tempId = -Date.now();
 
@@ -196,6 +201,25 @@ export default function MatchesPage() {
     }
   }
 
+  async function handleClearChat() {
+    if (!token || selectedMatchId === null) return;
+    const confirmClear = window.confirm(
+      "CONFIRMATION REQUIRED // Permanently erase all messages in this channel? You will remain matched with this developer.",
+    );
+    if (!confirmClear) return;
+
+    try {
+      await api.clearChat(token, selectedMatchId);
+      soundFx.playSwipePass();
+      setMessages([]);
+      setMatches((current) =>
+        current.map((m) => (m.id === selectedMatchId ? { ...m, unreadCount: 0 } : m)),
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to clear chat history.");
+    }
+  }
+
   async function handleUnmatch() {
     if (!token || selectedMatchId === null) return;
     const confirmUnmatch = window.confirm(
@@ -203,17 +227,30 @@ export default function MatchesPage() {
     );
     if (!confirmUnmatch) return;
 
+    const matchIdToDrop = selectedMatchId;
+    soundFx.playSwipePass();
+
+    // Instantly remove match from local UI state without waiting or requiring a refresh
+    setMatches((current) => {
+      const remaining = current.filter((m) => m.id !== matchIdToDrop);
+      const nextId = remaining.length > 0 ? (remaining[0].id ?? null) : null;
+      setSelectedMatchId(nextId);
+      return remaining;
+    });
+    setMessages([]);
+    setIsIntelOpen(false);
+
     try {
-      await api.unmatch(token, selectedMatchId);
-      soundFx.playSwipePass();
-      const matchIdToDrop = selectedMatchId;
-      setMatches((current) => current.filter((m) => m.id !== matchIdToDrop));
-      setMessages([]);
-      setIsIntelOpen(false);
-      const remaining = matches.filter((m) => m.id !== matchIdToDrop);
-      setSelectedMatchId(remaining.length > 0 ? (remaining[0].id ?? null) : null);
+      await api.unmatch(token, matchIdToDrop);
+      // Re-fetch in background to guarantee full server synchronization
+      const freshMatches = await api.getMatches(token).catch(() => []);
+      setMatches(freshMatches);
+      const nextId = freshMatches.find((m) => m.id !== null)?.id ?? null;
+      setSelectedMatchId(nextId);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to unmatch.");
+      // Rollback on failure
+      api.getMatches(token).then(setMatches).catch(() => {});
     }
   }
 
@@ -373,17 +410,35 @@ export default function MatchesPage() {
                       </a>
                     )}
                     {selectedMatch && (
-                      <button
-                        type="button"
-                        onClick={() => setIsIntelOpen((prev) => !prev)}
-                        className={`border px-3 py-1 font-heading text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                          isIntelOpen
-                            ? "border-accent bg-accent text-olive"
-                            : "border-accent text-accent hover:bg-accent/20"
-                        }`}
-                      >
-                        {isIntelOpen ? "[HIDE_INTEL]" : "[TEAMMATE_INTEL]"}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleClearChat}
+                          title="Erase all messages while keeping match"
+                          className="border border-amber-400/40 bg-amber-400/10 px-2.5 py-1 font-mono text-[10px] text-amber-300 hover:bg-amber-400 hover:text-olive transition-colors"
+                        >
+                          [CLEAR_CHAT]
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleUnmatch}
+                          title="Terminate connection and unmatch"
+                          className="border border-red-400/40 bg-red-400/10 px-2.5 py-1 font-mono text-[10px] text-red-400 hover:bg-red-400 hover:text-olive transition-colors"
+                        >
+                          [UNMATCH]
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsIntelOpen((prev) => !prev)}
+                          className={`border px-3 py-1 font-heading text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                            isIntelOpen
+                              ? "border-accent bg-accent text-olive"
+                              : "border-accent text-accent hover:bg-accent/20"
+                          }`}
+                        >
+                          {isIntelOpen ? "[HIDE_INTEL]" : "[TEAMMATE_INTEL]"}
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -469,6 +524,7 @@ export default function MatchesPage() {
                 <TeammateIntelPanel
                   user={selectedMatch.user}
                   onClose={() => setIsIntelOpen(false)}
+                  onClearChat={handleClearChat}
                   onUnmatch={handleUnmatch}
                 />
               )}

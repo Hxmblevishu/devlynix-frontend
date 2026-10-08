@@ -1,3 +1,5 @@
+import { clearSession, getSession, updateSessionTokens } from "@/lib/session";
+
 export interface Profile {
   id: number;
   name: string;
@@ -13,7 +15,17 @@ export interface Profile {
 
 export interface AuthResponse {
   token: string;
+  refreshToken: string;
   user: Profile;
+}
+
+export interface SessionDevice {
+  id: number;
+  deviceInfo: string;
+  ipAddress: string;
+  lastActive: string;
+  createdAt: string;
+  current: boolean;
 }
 
 export interface DiscoverResult {
@@ -67,6 +79,7 @@ interface ApiErrorBody {
   message?: string;
   error?: string;
 }
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   (process.env.NODE_ENV === "production"
@@ -83,18 +96,70 @@ export class ApiError extends Error {
   }
 }
 
+// Concurrency-safe promise for rotating token when multiple calls receive 401 simultaneously
+let refreshPromise: Promise<string | null> | null = null;
+
+async function executeSilentRefresh(): Promise<string | null> {
+  const session = getSession();
+  const currentRefreshToken = session?.refreshToken;
+  if (!currentRefreshToken) {
+    return null;
+  }
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Refresh-Token": currentRefreshToken,
+          },
+          body: JSON.stringify({ refreshToken: currentRefreshToken }),
+        });
+
+        if (!response.ok) {
+          clearSession();
+          if (
+            typeof window !== "undefined" &&
+            !window.location.pathname.startsWith("/login") &&
+            !window.location.pathname.startsWith("/register")
+          ) {
+            window.location.href = "/login";
+          }
+          return null;
+        }
+
+        const data = (await response.json()) as AuthResponse;
+        updateSessionTokens(data.token, data.refreshToken);
+        return data.token;
+      } catch {
+        return null;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+
+  return refreshPromise;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
   token?: string,
+  refreshTokenHeader?: string,
 ): Promise<T> {
   const headers = new Headers(options.headers);
 
-  if (options.body) {
+  if (options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (refreshTokenHeader) {
+    headers.set("X-Refresh-Token", refreshTokenHeader);
   }
 
   let response: Response;
@@ -108,6 +173,27 @@ async function request<T>(
       "Backend is unreachable. Start Spring Boot on port 8080 and try again.",
       0,
     );
+  }
+
+  // Intercept 401 Unauthorized for automatic token rotation & silent retry
+  const isAuthRoute =
+    path.startsWith("/auth/login") ||
+    path.startsWith("/auth/register") ||
+    path.startsWith("/auth/refresh");
+
+  if (response.status === 401 && !isAuthRoute) {
+    const newToken = await executeSilentRefresh();
+    if (newToken) {
+      headers.set("Authorization", `Bearer ${newToken}`);
+      try {
+        response = await fetch(`${API_BASE_URL}${path}`, {
+          ...options,
+          headers,
+        });
+      } catch {
+        throw new ApiError("Failed to re-issue request after token refresh", 0);
+      }
+    }
   }
 
   if (!response.ok) {
@@ -154,10 +240,46 @@ export const api = {
     });
   },
 
-  refreshToken(token: string) {
+  refreshToken(refreshToken: string) {
     return request<AuthResponse>(
       "/auth/refresh",
-      { method: "POST" },
+      {
+        method: "POST",
+        body: JSON.stringify({ refreshToken }),
+      },
+      undefined,
+      refreshToken,
+    );
+  },
+
+  logout(refreshToken?: string) {
+    const tokenToDrop = refreshToken ?? getSession()?.refreshToken;
+    return request<void>(
+      "/auth/logout",
+      {
+        method: "POST",
+        body: tokenToDrop ? JSON.stringify({ refreshToken: tokenToDrop }) : undefined,
+      },
+      undefined,
+      tokenToDrop,
+    ).finally(() => {
+      clearSession();
+    });
+  },
+
+  getSessions(token: string, currentRefreshToken?: string) {
+    return request<SessionDevice[]>(
+      "/auth/sessions",
+      {},
+      token,
+      currentRefreshToken ?? getSession()?.refreshToken,
+    );
+  },
+
+  terminateSession(token: string, sessionId: number) {
+    return request<void>(
+      `/auth/sessions/${sessionId}`,
+      { method: "DELETE" },
       token,
     );
   },
@@ -238,6 +360,14 @@ export const api = {
   unmatch(token: string, matchId: number) {
     return request<void>(
       `/matches/${matchId}`,
+      { method: "DELETE" },
+      token,
+    );
+  },
+
+  clearChat(token: string, matchId: number) {
+    return request<void>(
+      `/chat/${matchId}/messages`,
       { method: "DELETE" },
       token,
     );

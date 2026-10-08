@@ -35,15 +35,17 @@ export function EditProfileModal({
   // Auto-prefill whenever modal opens or currentProfile changes
   useEffect(() => {
     if (isOpen && currentProfile) {
-      setName(currentProfile.name ?? "");
-      setGithubUrl(currentProfile.githubUrl ?? "");
-      setBio(currentProfile.bio ?? "");
-      setLookingFor(currentProfile.lookingFor ?? "");
-      setLocation(currentProfile.location ?? "");
-      setProjectPitch(currentProfile.projectPitch ?? "");
-      setSkills(currentProfile.skills ? [...currentProfile.skills] : []);
-      setNewSkillInput("");
-      setError("");
+      queueMicrotask(() => {
+        setName(currentProfile.name ?? "");
+        setGithubUrl(currentProfile.githubUrl ?? "");
+        setBio(currentProfile.bio ?? "");
+        setLookingFor(currentProfile.lookingFor ?? "");
+        setLocation(currentProfile.location ?? "");
+        setProjectPitch(currentProfile.projectPitch ?? "");
+        setSkills(currentProfile.skills ? [...currentProfile.skills] : []);
+        setNewSkillInput("");
+        setError("");
+      });
     }
   }, [isOpen, currentProfile]);
 
