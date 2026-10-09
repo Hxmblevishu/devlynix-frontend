@@ -13,6 +13,7 @@ export function Navbar({ variant = "landing", onLogout }: NavbarProps) {
       ? [
           { href: "/dashboard", label: "DISCOVER" },
           { href: "/matches", label: "MATCHES" },
+          { href: "/sessions", label: "DEVICES" },
         ]
       : [
           { href: "/login", label: "LOGIN" },

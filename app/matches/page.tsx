@@ -154,8 +154,12 @@ export default function MatchesPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  function logout() {
-    clearSession();
+  async function logout() {
+    try {
+      await api.logout();
+    } catch {
+      clearSession();
+    }
     router.push("/");
   }
 

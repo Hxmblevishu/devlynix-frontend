@@ -253,14 +253,15 @@ export const api = {
   },
 
   logout(refreshToken?: string) {
-    const tokenToDrop = refreshToken ?? getSession()?.refreshToken;
+    const session = getSession();
+    const tokenToDrop = refreshToken ?? session?.refreshToken;
     return request<void>(
       "/auth/logout",
       {
         method: "POST",
         body: tokenToDrop ? JSON.stringify({ refreshToken: tokenToDrop }) : undefined,
       },
-      undefined,
+      session?.token,
       tokenToDrop,
     ).finally(() => {
       clearSession();
@@ -282,6 +283,31 @@ export const api = {
       { method: "DELETE" },
       token,
     );
+  },
+
+  terminateOtherSessions(token: string, currentRefreshToken?: string) {
+    const refreshToken = currentRefreshToken ?? getSession()?.refreshToken;
+    return request<void>(
+      "/auth/sessions/terminate-others",
+      {
+        method: "POST",
+        body: refreshToken ? JSON.stringify({ refreshToken }) : undefined,
+      },
+      token,
+      refreshToken,
+    );
+  },
+
+  logoutAll(token?: string) {
+    const session = getSession();
+    const bearer = token ?? session?.token;
+    return request<void>(
+      "/auth/logout-all",
+      { method: "POST" },
+      bearer,
+    ).finally(() => {
+      clearSession();
+    });
   },
 
   getProfile(token: string) {

@@ -103,8 +103,12 @@ export default function DashboardPage() {
     return Array.from(set);
   }, [profile]);
 
-  function logout() {
-    clearSession();
+  async function logout() {
+    try {
+      await api.logout();
+    } catch {
+      clearSession();
+    }
     router.push("/");
   }
 
