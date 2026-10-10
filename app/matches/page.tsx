@@ -14,7 +14,8 @@ import {
   type Message,
 } from "@/lib/api";
 import { soundFx } from "@/lib/sound";
-import { clearSession, getSession } from "@/lib/session";
+import { clearSession, getSession, subscribeSession } from "@/lib/session";
+import { realtime } from "@/lib/websocket";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
@@ -24,7 +25,7 @@ interface ExtendedMessage extends Message {
 
 export default function MatchesPage() {
   const router = useRouter();
-  const [token] = useState(() => getSession()?.token ?? "");
+  const [token, setToken] = useState(() => getSession()?.token ?? "");
   const [matches, setMatches] = useState<Match[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ExtendedMessage[]>([]);
@@ -33,7 +34,17 @@ export default function MatchesPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [isIntelOpen, setIsIntelOpen] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Sync token reactive updates on RTR background rotation
+  useEffect(() => {
+    return subscribeSession((newSession) => {
+      if (newSession?.token) {
+        setToken(newSession.token);
+      }
+    });
+  }, []);
 
   const handleRequestError = useCallback(
     (requestError: unknown) => {
@@ -51,11 +62,16 @@ export default function MatchesPage() {
     [router],
   );
 
-  // Fetch all matches on mount
+  // Fetch all matches and presence on mount
   useEffect(() => {
     if (!token) {
       router.replace("/login");
       return;
+    }
+
+    const session = getSession();
+    if (session?.user.email) {
+      realtime.connect(session.user.email);
     }
 
     api
@@ -67,9 +83,25 @@ export default function MatchesPage() {
       })
       .catch((requestError) => handleRequestError(requestError))
       .finally(() => setLoading(false));
+
+    api.getPresence().then((data) => {
+      if (data?.onlineUsers) {
+        setOnlineUsers(new Set(data.onlineUsers.map((e) => e.toLowerCase())));
+      }
+    });
+
+    const unsubPresence = realtime.subscribe("/topic/presence", (data: any) => {
+      if (data?.onlineUsers && Array.isArray(data.onlineUsers)) {
+        setOnlineUsers(new Set(data.onlineUsers.map((e: string) => e.toLowerCase())));
+      }
+    });
+
+    return () => {
+      unsubPresence();
+    };
   }, [handleRequestError, router, token]);
 
-  // Real-time message synchronization with Tab Inactivity Backoff & Delta Sync
+  // Real-time message synchronization with WebSocket + Delta Polling Fallback
   useEffect(() => {
     if (!token || selectedMatchId === null) {
       return;
@@ -77,7 +109,7 @@ export default function MatchesPage() {
 
     let isMounted = true;
 
-    // 1. Mark as read and fetch full conversation
+    // 1. Mark as read and fetch initial conversation
     api
       .markChatAsRead(token, selectedMatchId)
       .then(() => {
@@ -96,7 +128,28 @@ export default function MatchesPage() {
       })
       .catch((requestError) => handleRequestError(requestError));
 
-    // 2. Adaptive Delta Polling (2s when tab active, 30s when backgrounded)
+    // 2. Subscribe to instant WebSocket chat updates on /topic/matches/{matchId}
+    const unsubMatchChat = realtime.subscribe(
+      `/topic/matches/${selectedMatchId}`,
+      (incomingMsg: Message) => {
+        if (!isMounted || !incomingMsg || !incomingMsg.id) return;
+        soundFx.playMessageReceived();
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === incomingMsg.id)) return prev;
+          // Filter out matching optimistic message if any
+          const clean = prev.filter(
+            (m) =>
+              !m.isOptimistic ||
+              m.content.trim() !== incomingMsg.content.trim() ||
+              m.senderId !== incomingMsg.senderId,
+          );
+          return [...clean, incomingMsg];
+        });
+        api.markChatAsRead(token, selectedMatchId!);
+      },
+    );
+
+    // 3. Adaptive Delta Polling as fallback (2s when tab active, 30s when backgrounded)
     let pollTimer: NodeJS.Timeout;
 
     function fetchLatestMessages() {
@@ -134,7 +187,7 @@ export default function MatchesPage() {
 
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
-        fetchLatestMessages(); // Instant refresh on tab focus
+        fetchLatestMessages();
       }
       setupPolling();
     }
@@ -144,6 +197,7 @@ export default function MatchesPage() {
 
     return () => {
       isMounted = false;
+      unsubMatchChat();
       clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -155,6 +209,7 @@ export default function MatchesPage() {
   }, [messages]);
 
   async function logout() {
+    realtime.disconnect();
     try {
       await api.logout();
     } catch {
@@ -305,6 +360,7 @@ export default function MatchesPage() {
                 {matches.map((match) => {
                   const isSelected = selectedMatchId === match.id;
                   const avatar = getAvatarUrl(match.user.githubUrl);
+                  const isMatchOnline = onlineUsers.has(match.user.email.toLowerCase());
 
                   return (
                     <button
@@ -321,36 +377,51 @@ export default function MatchesPage() {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        {avatar ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={avatar}
-                            alt={match.user.name}
-                            className={`h-10 w-10 border object-cover ${
-                              isSelected ? "border-olive" : "border-accent"
-                            }`}
-                          />
-                        ) : (
-                          <div
-                            className={`flex h-10 w-10 items-center justify-center border font-display text-lg ${
-                              isSelected
-                                ? "border-olive bg-olive text-accent"
-                                : "border-accent bg-olive text-accent"
-                            }`}
-                          >
-                            {match.user.name.slice(0, 2).toUpperCase()}
-                          </div>
-                        )}
+                        <div className="relative">
+                          {avatar ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={avatar}
+                              alt={match.user.name}
+                              className={`h-10 w-10 border object-cover ${
+                                isSelected ? "border-olive" : "border-accent"
+                              }`}
+                            />
+                          ) : (
+                            <div
+                              className={`flex h-10 w-10 items-center justify-center border font-display text-lg ${
+                                isSelected
+                                  ? "border-olive bg-olive text-accent"
+                                  : "border-accent bg-olive text-accent"
+                              }`}
+                            >
+                              {match.user.name.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          {isMatchOnline && (
+                            <span
+                              className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-accent border-2 border-olive shadow-[0_0_6px_rgba(205,255,0,0.8)]"
+                              title="Online now"
+                            />
+                          )}
+                        </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-1">
                             <span className="block font-heading text-base font-bold truncate">
                               {match.user.name}
                             </span>
-                            {Boolean(match.unreadCount && match.unreadCount > 0) && (
-                              <span className="border border-accent bg-accent px-1.5 py-0.5 font-mono text-[8px] font-bold text-olive uppercase shrink-0">
-                                {match.unreadCount} NEW
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1">
+                              {isMatchOnline && (
+                                <span className="font-mono text-[7px] text-accent font-bold uppercase">
+                                  ● ON
+                                </span>
+                              )}
+                              {Boolean(match.unreadCount && match.unreadCount > 0) && (
+                                <span className="border border-accent bg-accent px-1.5 py-0.5 font-mono text-[8px] font-bold text-olive uppercase shrink-0">
+                                  {match.unreadCount} NEW
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <span
                             className={`mt-0.5 block font-mono text-[9px] truncate ${
@@ -373,27 +444,46 @@ export default function MatchesPage() {
                 {/* Chat Header */}
                 <div className="border-b border-border p-4 flex flex-wrap items-center justify-between gap-4 bg-olive-light/10">
                   <div className="flex items-center gap-3">
-                    {teammateAvatar ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={teammateAvatar}
-                        alt={selectedMatch?.user.name ?? ""}
-                        className="h-10 w-10 border border-accent object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-10 w-10 items-center justify-center border border-accent bg-olive font-display text-lg text-accent">
-                        {selectedMatch?.user.name.slice(0, 2).toUpperCase() ?? "??"}
-                      </div>
-                    )}
+                    <div className="relative">
+                      {teammateAvatar ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={teammateAvatar}
+                          alt={selectedMatch?.user.name ?? ""}
+                          className="h-10 w-10 border border-accent object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center border border-accent bg-olive font-display text-lg text-accent">
+                          {selectedMatch?.user.name.slice(0, 2).toUpperCase() ?? "??"}
+                        </div>
+                      )}
+                      {selectedMatch && onlineUsers.has(selectedMatch.user.email.toLowerCase()) && (
+                        <span
+                          className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full bg-accent border-2 border-olive shadow-[0_0_6px_rgba(205,255,0,0.8)]"
+                          title="Online now"
+                        />
+                      )}
+                    </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
-                        </span>
-                        <p className="font-mono text-[9px] text-text-secondary">
-                          LIVE CHANNEL :: AUTO-SYNC
-                        </p>
+                        {selectedMatch && onlineUsers.has(selectedMatch.user.email.toLowerCase()) ? (
+                          <>
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
+                            </span>
+                            <p className="font-mono text-[9px] text-accent font-bold">
+                              PARTNER ONLINE // DIRECT LINK ACTIVE
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <span className="h-2 w-2 rounded-full bg-text-secondary/40" />
+                            <p className="font-mono text-[9px] text-text-secondary">
+                              CHANNEL STANDBY // ASYNC STORE
+                            </p>
+                          </>
+                        )}
                       </div>
                       <h2 className="font-display text-2xl text-accent">
                         {selectedMatch?.user.name ?? "SELECT_A_MATCH"}

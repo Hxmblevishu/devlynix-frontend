@@ -155,10 +155,21 @@ async function request<T>(
   if (options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+
+  // Intercept 401 Unauthorized for automatic token rotation & silent retry
+  const isAuthRoute =
+    path.startsWith("/auth/login") ||
+    path.startsWith("/auth/register") ||
+    path.startsWith("/auth/refresh") ||
+    path.startsWith("/auth/logout") ||
+    path.startsWith("/auth/logout-all");
+
+  const session = getSession();
+  const effectiveToken = session?.token || token;
+  if (effectiveToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${effectiveToken}`);
   }
-  if (refreshTokenHeader) {
+  if (refreshTokenHeader && !headers.has("X-Refresh-Token")) {
     headers.set("X-Refresh-Token", refreshTokenHeader);
   }
 
@@ -174,12 +185,6 @@ async function request<T>(
       0,
     );
   }
-
-  // Intercept 401 Unauthorized for automatic token rotation & silent retry
-  const isAuthRoute =
-    path.startsWith("/auth/login") ||
-    path.startsWith("/auth/register") ||
-    path.startsWith("/auth/refresh");
 
   if (response.status === 401 && !isAuthRoute) {
     const newToken = await executeSilentRefresh();
@@ -405,5 +410,18 @@ export const api = {
       { method: "PUT" },
       token,
     ).catch(() => undefined);
+  },
+
+  getPresence() {
+    return request<{ onlineUsers: string[]; count: number }>("/presence").catch(() => ({
+      onlineUsers: [],
+      count: 0,
+    }));
+  },
+
+  cleanupTokens() {
+    return request<{ status: string; purgedCount: number; timestamp: string }>("/auth/cleanup", {
+      method: "POST",
+    });
   },
 };

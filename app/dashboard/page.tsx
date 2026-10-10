@@ -16,8 +16,9 @@ import {
   type Profile,
   type SwipeDirection,
 } from "@/lib/api";
-import { clearSession, getSession, updateStoredUser } from "@/lib/session";
+import { clearSession, getSession, subscribeSession, updateStoredUser } from "@/lib/session";
 import { soundFx } from "@/lib/sound";
+import { realtime } from "@/lib/websocket";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -38,7 +39,7 @@ const POPULAR_SKILLS = [
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [token] = useState(() => getSession()?.token ?? "");
+  const [token, setToken] = useState(() => getSession()?.token ?? "");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [discover, setDiscover] = useState<DiscoverResult[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -48,6 +49,15 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [successBanner, setSuccessBanner] = useState("");
   const [activeSwipe, setActiveSwipe] = useState<number | null>(null);
+
+  // Keep token in sync if rotated in background
+  useEffect(() => {
+    return subscribeSession((newSession) => {
+      if (newSession?.token) {
+        setToken(newSession.token);
+      }
+    });
+  }, []);
 
   // Modals
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -94,6 +104,31 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, [router, token]);
 
+  // Real-time instant match notifications over WebSocket
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    realtime.connect(profile.email);
+    const unsubscribe = realtime.subscribe(
+      `/topic/user/${profile.id}/notifications`,
+      (notification: any) => {
+        if (notification?.type === "MUTUAL_MATCH" && notification?.partner) {
+          soundFx.playMatchSound();
+          setSuccessBanner(
+            `⚡ INSTANT MATCH CONFIRMED! ${notification.partner.name.toUpperCase()} JUST LIKED YOU BACK!`,
+          );
+          // Refresh matches and incoming count
+          api.getMatches(token).then(setMatches).catch(() => {});
+          api.getIncomingRequests(token).then(setIncomingRequests).catch(() => {});
+        }
+      },
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [profile?.id, profile?.email, token]);
+
   // Combined list of filter chips
   const allFilterSkills = useMemo(() => {
     const set = new Set<string>(POPULAR_SKILLS);
@@ -104,6 +139,7 @@ export default function DashboardPage() {
   }, [profile]);
 
   async function logout() {
+    realtime.disconnect();
     try {
       await api.logout();
     } catch {

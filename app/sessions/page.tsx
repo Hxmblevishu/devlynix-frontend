@@ -6,12 +6,13 @@ import { Navbar } from "@/components/theme/Navbar";
 import { RetroButton } from "@/components/theme/RetroButton";
 import { TechnicalFrame } from "@/components/theme/TechnicalFrame";
 import { api, type SessionDevice } from "@/lib/api";
-import { clearSession, getSession } from "@/lib/session";
+import { parseDevice } from "@/lib/device";
+import { clearSession, getSession, subscribeSession } from "@/lib/session";
 import { soundFx } from "@/lib/sound";
 
 export default function SessionsPage() {
   const router = useRouter();
-  const [token] = useState(() => getSession()?.token ?? "");
+  const [token, setToken] = useState(() => getSession()?.token ?? "");
   const [sessions, setSessions] = useState<SessionDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +23,14 @@ export default function SessionsPage() {
   const [terminatingId, setTerminatingId] = useState<number | null>(null);
   const [terminatingOthers, setTerminatingOthers] = useState(false);
   const [loggingOutAll, setLoggingOutAll] = useState(false);
+
+  useEffect(() => {
+    return subscribeSession((newSession) => {
+      if (newSession?.token) {
+        setToken(newSession.token);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -117,6 +126,27 @@ export default function SessionsPage() {
     router.push("/login");
   }
 
+  // 5. Purge expired and revoked tokens from Neon DB directly
+  const [purging, setPurging] = useState(false);
+  async function handlePurgeDatabase() {
+    handleSound();
+    setPurging(true);
+    setActionMessage(null);
+    setError(null);
+    try {
+      const res = await api.cleanupTokens();
+      setActionMessage(
+        `Database cleanup executed: ${res.purgedCount} stale/revoked refresh tokens purged from Neon DB.`
+      );
+      soundFx.playSwipeLike();
+      fetchSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to run database cleanup.");
+    } finally {
+      setPurging(false);
+    }
+  }
+
   const currentSession = sessions.find((s) => s.current);
   const otherSessions = sessions.filter((s) => !s.current);
 
@@ -159,6 +189,15 @@ export default function SessionsPage() {
 
             {/* Quick action controls */}
             <div className="flex flex-wrap items-center gap-3">
+              <RetroButton
+                variant="outline"
+                onClick={handlePurgeDatabase}
+                disabled={purging}
+                className="text-xs px-4 py-2 border-accent/60 text-accent hover:bg-accent/10"
+              >
+                {purging ? "PURGING..." : "PURGE NEON DB TOKENS"}
+              </RetroButton>
+
               <RetroButton
                 variant="outline"
                 onClick={handleLogoutThisDevice}
@@ -228,46 +267,64 @@ export default function SessionsPage() {
               </div>
 
               {currentSession ? (
-                <div className="border-2 border-accent bg-olive-light/60 p-5 shadow-[4px_4px_0_0_rgba(205,255,0,0.2)]">
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-3">
-                        <span className="font-display text-lg tracking-wide text-text-primary">
-                          {currentSession.deviceInfo || "Web Browser / Desktop"}
-                        </span>
-                        <span className="flex items-center gap-1.5 font-mono text-[10px] text-accent">
-                          <span className="h-2 w-2 rounded-full bg-accent animate-ping" />
-                          ONLINE NOW
-                        </span>
-                      </div>
+                (() => {
+                  const dev = parseDevice(currentSession.deviceInfo);
+                  return (
+                    <div className="border-2 border-accent bg-olive-light/60 p-5 shadow-[4px_4px_0_0_rgba(205,255,0,0.2)]">
+                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span className="text-2xl" role="img" aria-label={dev.badge}>
+                              {dev.icon}
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-display text-lg tracking-wide text-text-primary">
+                                  {dev.title}
+                                </span>
+                                <span className="rounded border border-accent/40 bg-accent/10 px-2 py-0.5 font-mono text-[9px] font-bold text-accent">
+                                  {dev.badge}
+                                </span>
+                              </div>
+                              <span className="font-mono text-xs text-text-secondary">
+                                {dev.platform}
+                              </span>
+                            </div>
+                            <span className="flex items-center gap-1.5 font-mono text-[10px] text-accent ml-2">
+                              <span className="h-2 w-2 rounded-full bg-accent animate-ping" />
+                              ONLINE NOW
+                            </span>
+                          </div>
 
-                      <div className="flex flex-wrap gap-x-6 gap-y-1 font-mono text-xs text-text-secondary">
-                        <div>
-                          <span className="text-text-secondary/50">IP ADDRESS: </span>
-                          <span className="text-accent/90">{currentSession.ipAddress || "127.0.0.1"}</span>
+                          <div className="flex flex-wrap gap-x-6 gap-y-1 font-mono text-xs text-text-secondary pt-1">
+                            <div>
+                              <span className="text-text-secondary/50">IP ADDRESS: </span>
+                              <span className="text-accent/90">{currentSession.ipAddress || "127.0.0.1"}</span>
+                            </div>
+                            <div>
+                              <span className="text-text-secondary/50">LAST ACTIVE: </span>
+                              <span>{formatDate(currentSession.lastActive)}</span>
+                            </div>
+                            <div>
+                              <span className="text-text-secondary/50">SESSION STARTED: </span>
+                              <span>{formatDate(currentSession.createdAt)}</span>
+                            </div>
+                          </div>
                         </div>
+
                         <div>
-                          <span className="text-text-secondary/50">LAST ACTIVE: </span>
-                          <span>{formatDate(currentSession.lastActive)}</span>
-                        </div>
-                        <div>
-                          <span className="text-text-secondary/50">SESSION STARTED: </span>
-                          <span>{formatDate(currentSession.createdAt)}</span>
+                          <RetroButton
+                            variant="outline"
+                            onClick={handleLogoutThisDevice}
+                            className="text-xs px-4 py-2 border-border hover:border-accent"
+                          >
+                            DISCONNECT THIS DEVICE
+                          </RetroButton>
                         </div>
                       </div>
                     </div>
-
-                    <div>
-                      <RetroButton
-                        variant="outline"
-                        onClick={handleLogoutThisDevice}
-                        className="text-xs px-4 py-2 border-border hover:border-accent"
-                      >
-                        DISCONNECT THIS DEVICE
-                      </RetroButton>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()
               ) : (
                 <div className="border border-border/50 bg-olive-light/20 p-4 font-mono text-xs text-text-secondary">
                   Current session telemetry unavailable.
@@ -303,51 +360,64 @@ export default function SessionsPage() {
                 </div>
               ) : (
                 <div className="grid gap-4">
-                  {otherSessions.map((session) => (
-                    <div
-                      key={session.id}
-                      className="border border-border/70 bg-olive-light/30 p-5 transition-colors hover:border-border"
-                    >
-                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div className="space-y-1.5">
-                          <div className="flex items-center gap-3">
-                            <span className="font-heading text-sm font-bold tracking-wide text-text-primary">
-                              {session.deviceInfo || "Remote Browser / Client"}
-                            </span>
-                            <span className="rounded bg-border/40 px-2 py-0.5 font-mono text-[9px] uppercase text-text-secondary">
-                              REMOTE
-                            </span>
+                  {otherSessions.map((session) => {
+                    const dev = parseDevice(session.deviceInfo);
+                    return (
+                      <div
+                        key={session.id}
+                        className="border border-border/70 bg-olive-light/30 p-5 transition-colors hover:border-border"
+                      >
+                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="text-2xl" role="img" aria-label={dev.badge}>
+                                {dev.icon}
+                              </span>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-heading text-sm font-bold tracking-wide text-text-primary">
+                                    {dev.title}
+                                  </span>
+                                  <span className="rounded bg-border/40 px-2 py-0.5 font-mono text-[9px] uppercase text-text-secondary">
+                                    {dev.badge}
+                                  </span>
+                                </div>
+                                <span className="font-mono text-xs text-text-secondary">
+                                  {dev.platform}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-x-6 gap-y-1 font-mono text-xs text-text-secondary pt-1">
+                              <div>
+                                <span className="text-text-secondary/50">IP ADDRESS: </span>
+                                <span>{session.ipAddress || "Unknown"}</span>
+                              </div>
+                              <div>
+                                <span className="text-text-secondary/50">LAST ACTIVITY: </span>
+                                <span>{formatDate(session.lastActive)}</span>
+                              </div>
+                              <div>
+                                <span className="text-text-secondary/50">AUTHENTICATED: </span>
+                                <span>{formatDate(session.createdAt)}</span>
+                              </div>
+                            </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-x-6 gap-y-1 font-mono text-xs text-text-secondary">
-                            <div>
-                              <span className="text-text-secondary/50">IP ADDRESS: </span>
-                              <span>{session.ipAddress || "Unknown"}</span>
-                            </div>
-                            <div>
-                              <span className="text-text-secondary/50">LAST ACTIVITY: </span>
-                              <span>{formatDate(session.lastActive)}</span>
-                            </div>
-                            <div>
-                              <span className="text-text-secondary/50">AUTHENTICATED: </span>
-                              <span>{formatDate(session.createdAt)}</span>
-                            </div>
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => handleTerminateSession(session.id)}
+                              disabled={terminatingId === session.id}
+                              className="font-mono text-xs font-bold uppercase tracking-wider text-red-400 hover:text-red-300 border border-red-500/40 px-3 py-1.5 bg-red-950/20 hover:bg-red-950/40 transition-colors disabled:opacity-50"
+                            >
+                              {terminatingId === session.id ? "REVOKING..." : "REVOKE ACCESS"}
+                            </button>
                           </div>
-                        </div>
-
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => handleTerminateSession(session.id)}
-                            disabled={terminatingId === session.id}
-                            className="font-mono text-xs font-bold uppercase tracking-wider text-red-400 hover:text-red-300 border border-red-500/40 px-3 py-1.5 bg-red-950/20 hover:bg-red-950/40 transition-colors disabled:opacity-50"
-                          >
-                            {terminatingId === session.id ? "REVOKING..." : "REVOKE ACCESS"}
-                          </button>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

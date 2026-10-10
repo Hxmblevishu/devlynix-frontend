@@ -1,11 +1,18 @@
 import type { AuthResponse, Profile } from "@/lib/api";
 
 const SESSION_KEY = "devlynix.session";
+const SESSION_EVENT = "devlynix:session-change";
 
 export interface AuthSession {
   token: string;
   refreshToken?: string;
   user: Profile;
+}
+
+function notifySessionChange(session: AuthSession | null) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(SESSION_EVENT, { detail: session }));
+  }
 }
 
 export function saveSession(response: AuthResponse): AuthSession {
@@ -14,7 +21,10 @@ export function saveSession(response: AuthResponse): AuthSession {
     refreshToken: response.refreshToken,
     user: response.user,
   };
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  if (typeof window !== "undefined") {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  }
+  notifySessionChange(session);
   return session;
 }
 
@@ -38,25 +48,54 @@ export function getSession(): AuthSession | null {
 
 export function updateSessionTokens(token: string, refreshToken?: string) {
   const session = getSession();
-  if (session) {
-    localStorage.setItem(
-      SESSION_KEY,
-      JSON.stringify({
-        ...session,
-        token,
-        refreshToken: refreshToken ?? session.refreshToken,
-      }),
-    );
+  if (session && typeof window !== "undefined") {
+    const updated: AuthSession = {
+      ...session,
+      token,
+      refreshToken: refreshToken ?? session.refreshToken,
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(updated));
+    notifySessionChange(updated);
   }
 }
 
 export function updateStoredUser(user: Profile) {
   const session = getSession();
-  if (session) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, user }));
+  if (session && typeof window !== "undefined") {
+    const updated: AuthSession = { ...session, user };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(updated));
+    notifySessionChange(updated);
   }
 }
 
 export function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(SESSION_KEY);
+  }
+  notifySessionChange(null);
+}
+
+export function subscribeSession(callback: (session: AuthSession | null) => void): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handleCustom = (e: Event) => {
+    const custom = e as CustomEvent<AuthSession | null>;
+    callback(custom.detail);
+  };
+
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === SESSION_KEY) {
+      callback(getSession());
+    }
+  };
+
+  window.addEventListener(SESSION_EVENT, handleCustom);
+  window.addEventListener("storage", handleStorage);
+
+  return () => {
+    window.removeEventListener(SESSION_EVENT, handleCustom);
+    window.removeEventListener("storage", handleStorage);
+  };
 }
