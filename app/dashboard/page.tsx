@@ -6,6 +6,7 @@ import { TechnicalFrame } from "@/components/theme/TechnicalFrame";
 import { EditProfileModal } from "@/components/theme/EditProfileModal";
 import { IncomingRequestsModal } from "@/components/theme/IncomingRequestsModal";
 import { CandidateDetailModal } from "@/components/theme/CandidateDetailModal";
+import { SwipeDeck } from "@/components/theme/SwipeDeck";
 import {
   api,
   ApiError,
@@ -69,6 +70,7 @@ export default function DashboardPage() {
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [customSkillSearch, setCustomSkillSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"deck" | "grid">("deck");
 
   useEffect(() => {
     if (!token) {
@@ -424,7 +426,35 @@ export default function DashboardPage() {
                   </p>
                   <h2 className="font-display text-4xl text-accent">FIND_YOUR_BUILD_PARTNER</h2>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* View Mode Toggle: SWIPE DECK vs GRID */}
+                  <div className="flex border border-border bg-olive-light/20 p-0.5 font-mono text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("deck")}
+                      className={`px-3 py-1 transition-colors ${
+                        viewMode === "deck"
+                          ? "bg-accent text-olive font-bold shadow-[1px_1px_0_0_rgba(0,0,0,1)]"
+                          : "text-text-secondary hover:text-accent"
+                      }`}
+                      title="Single-card swipe deck (Tinder mode)"
+                    >
+                      🎴 SWIPE_DECK
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("grid")}
+                      className={`px-3 py-1 transition-colors ${
+                        viewMode === "grid"
+                          ? "bg-accent text-olive font-bold shadow-[1px_1px_0_0_rgba(0,0,0,1)]"
+                          : "text-text-secondary hover:text-accent"
+                      }`}
+                      title="Multi-card grid view"
+                    >
+                      ⊞ GRID_VIEW
+                    </button>
+                  </div>
+
                   {selectedSkill && (
                     <span className="border border-accent/40 bg-accent/10 px-2.5 py-1 font-mono text-[10px] text-accent">
                       FILTERED_BY: {selectedSkill}
@@ -551,6 +581,17 @@ export default function DashboardPage() {
                 <div className="border border-dashed border-border p-12 text-center font-mono text-xs text-accent animate-pulse">
                   FILTERING_CANDIDATE_SIGNALS...
                 </div>
+              ) : viewMode === "deck" ? (
+                <SwipeDeck
+                  candidates={discover}
+                  onSwipe={handleSwipe}
+                  onInspect={setSelectedCandidateDossier}
+                  isSwiping={activeSwipe !== null}
+                  onRewind={handleResetPasses}
+                  isRewinding={isRewinding}
+                  selectedSkill={selectedSkill}
+                  onResetFilter={() => handleFilterBySkill(null)}
+                />
               ) : discover.length === 0 ? (
                 <div className="border border-dashed border-border p-12 text-center space-y-4">
                   <p className="font-mono text-xs text-text-secondary">

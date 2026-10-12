@@ -126,26 +126,6 @@ export default function SessionsPage() {
     router.push("/login");
   }
 
-  // 5. Purge expired and revoked tokens from Neon DB directly
-  const [purging, setPurging] = useState(false);
-  async function handlePurgeDatabase() {
-    handleSound();
-    setPurging(true);
-    setActionMessage(null);
-    setError(null);
-    try {
-      const res = await api.cleanupTokens();
-      setActionMessage(
-        `Database cleanup executed: ${res.purgedCount} stale/revoked refresh tokens purged from Neon DB.`
-      );
-      soundFx.playSwipeLike();
-      fetchSessions();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to run database cleanup.");
-    } finally {
-      setPurging(false);
-    }
-  }
 
   const currentSession = sessions.find((s) => s.current);
   const otherSessions = sessions.filter((s) => !s.current);
@@ -180,24 +160,10 @@ export default function SessionsPage() {
                   ACTIVE SESSIONS & DEVICE SECURITY
                 </h1>
               </div>
-              <p className="mt-2 font-mono text-xs text-text-secondary leading-relaxed max-w-2xl">
-                Refresh Token Rotation (RTR) is actively protecting your account. Each device operates in an
-                isolated token family lineage. Revoking a session invalidates that lineage and triggers theft
-                defense if compromised tokens are reused.
-              </p>
             </div>
 
             {/* Quick action controls */}
             <div className="flex flex-wrap items-center gap-3">
-              <RetroButton
-                variant="outline"
-                onClick={handlePurgeDatabase}
-                disabled={purging}
-                className="text-xs px-4 py-2 border-accent/60 text-accent hover:bg-accent/10"
-              >
-                {purging ? "PURGING..." : "PURGE NEON DB TOKENS"}
-              </RetroButton>
-
               <RetroButton
                 variant="outline"
                 onClick={handleLogoutThisDevice}

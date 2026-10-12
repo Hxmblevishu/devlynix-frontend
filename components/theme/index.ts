@@ -13,3 +13,4 @@ export { TeammateIntelPanel } from "./TeammateIntelPanel";
 export { CandidateDetailModal } from "./CandidateDetailModal";
 export { MeasurementDecor } from "./MeasurementDecor";
 export { CassettePlayerIllustration } from "./CassettePlayerIllustration";
+export { SwipeDeck } from "./SwipeDeck";
